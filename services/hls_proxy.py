@@ -1155,11 +1155,10 @@ class HLSProxy:
             # ✅ Use pooled session for better performance
             session, _ = await self._get_proxy_session(license_url)
             async with session.request(
-                    request.method, 
-                    license_url, 
-                    headers=headers, 
-                    data=body, 
-                    **connector_kwargs
+                    request.method,
+                    license_url,
+                    headers=headers,
+                    data=body
                 ) as resp:
                     response_body = await resp.read()
                     logger.info(f"✅ License response: {resp.status} ({len(response_body)} bytes)")
@@ -1227,16 +1226,12 @@ class HLSProxy:
 
             logger.info(f"🔑 Fetching AES key from: {key_url}")
             logger.info(f"   -> with headers: {headers}")
-            
-            # ✅ NUOVO: Usa il sistema di routing basato su TRANSPORT_ROUTES
-            proxy = get_proxy_for_url(key_url, TRANSPORT_ROUTES, GLOBAL_PROXIES)
-            connector_kwargs = {}
-            if proxy:
-                connector_kwargs['proxy'] = proxy
-                logger.info(f"Using proxy {proxy} for the key request.")
-            
+
             # ✅ Use pooled session for better performance
-            session, _ = await self._get_proxy_session(key_url)
+            # The session already has the proxy configured in its connector
+            session, proxy_used = await self._get_proxy_session(key_url)
+            if proxy_used:
+                logger.info(f"Using pooled session with proxy: {proxy_used}")
             secret_key = headers.pop('X-Secret-Key', None)
 
             # Calcola X-Key-Timestamp, X-Key-Nonce, X-Fingerprint, e X-Key-Path se abbiamo la secret_key
@@ -1261,7 +1256,7 @@ class HLSProxy:
                     headers['X-User-Agent'] = headers.get('User-Agent', headers.get('user-agent', 'Mozilla/5.0'))
                 logger.info(f"🔐 Auth key headers: Authorization={'***' if headers.get('Authorization') else 'missing'}, X-Channel-Key={headers.get('X-Channel-Key', 'missing')}, X-User-Agent={headers.get('X-User-Agent', 'missing')}")
 
-            async with session.get(key_url, headers=headers, **connector_kwargs) as resp:
+            async with session.get(key_url, headers=headers) as resp:
                 if resp.status == 200 or resp.status == 206:
                     key_data = await resp.read()
                     logger.info(f"✅ AES key fetched successfully: {len(key_data)} bytes")
